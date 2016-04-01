@@ -262,7 +262,7 @@ Default: It will use the system wide certificate store.
 #### `AUTH_LDAP_TLS_VALIDATE`
 *Optional.* Specifies if the server certificate must be validated.
 
-Default: `False`
+Default: `True`
 
 #### `AUTH_LDAP_TLS_PRIVATE_KEY`
 *Optional.* Specifies the location for the file with the private key of the client.
