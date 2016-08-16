@@ -114,6 +114,20 @@ directory tree.
 
 It is yet to be implemented in this library. See [issue #2](https://github.com/sjkingo/django_auth_ldap3/issues/2).
 
+### Method 3: Bind with one user, then search and bind
+
+The third method is used when the user's distinguished name (DN) format cannot be reliably predicted.
+An user whose DN is known is used to search for the desired user's DN, which is then used to validate
+her credentials. It may be seen as a subset of method 2.
+
+Relevant settings:
+* `AUTH_LDAP_BIND_AS_AUTHENTICATING_USER`: Controls whether direct binding is used
+* `AUTH_LDAP_BIND_DN`: The distinguished name of the user which will search for other users
+* `AUTH_LDAP_BIND_PASSWORD`: Password for the user which will search for other users
+* `AUTH_LDAP_USER_DN_FILTER_TEMPLATE`: Template of the search string used to query the server. For example: `(&(objectclass=person)(uid={username}))`. It must contain `{username}` somewhere which will be substituted for the username that is being authenticated.
+
+If using either of these settings, set `AUTH_LDAP_BIND_TEMPLATE` to `None`.
+
 ## Group membership
 
 Sometimes it is desirable to restrict authentication to users that are members
@@ -275,5 +289,5 @@ Default: `True`
 ## Caveats
 
 When using this library, it is strongly recommended to not manually
-modify the usernames in the Django user table (either through the admin or modifying a 
+modify the usernames in the Django user table (either through the admin or modifying a
 `User.username` field). See issues [#7](https://github.com/sjkingo/django_auth_ldap3/issues/7) and [#9](https://github.com/sjkingo/django_auth_ldap3/issues/9) for more details.

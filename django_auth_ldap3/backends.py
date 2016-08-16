@@ -2,7 +2,6 @@ from django_auth_ldap3.conf import settings
 
 from django.contrib.auth.models import Group
 from django.contrib.auth import get_user_model
-from ldap3.core.exceptions import LDAPSocketOpenError
 import hashlib
 import ldap3
 import logging
@@ -11,6 +10,7 @@ import ssl
 User = get_user_model()
 
 logger = logging.getLogger('django_auth_ldap3')
+
 
 class LDAPUser(object):
     """
@@ -39,6 +39,7 @@ class LDAPUser(object):
     @property
     def username(self):
         return getattr(self, settings.UID_ATTRIB)
+
 
 class LDAPBackend(object):
     """
@@ -107,14 +108,15 @@ class LDAPBackend(object):
         if not django_user:
             # Create new user. We use `ldap_user.username` here as it is the
             # case-sensitive version
-            django_user = User(username=ldap_user.username,
-                    password=hashlib.sha1().hexdigest(),
-                    first_name=ldap_user.givenName,
-                    last_name=ldap_user.sn,
-                    email=ldap_user.mail,
-                    is_superuser=False,
-                    is_staff=admin,
-                    is_active=True
+            django_user = User(
+                username=ldap_user.username,
+                password=hashlib.sha1().hexdigest(),
+                first_name=ldap_user.givenName,
+                last_name=ldap_user.sn,
+                email=ldap_user.mail,
+                is_superuser=False,
+                is_staff=admin,
+                is_active=True
             )
             django_user.save()
         else:
@@ -158,8 +160,10 @@ class LDAPBackend(object):
         # primaryGroupToken. This will return 0 results in OpenLDAP and hence
         # be ignored.
         pgt = None
-        group_attribs = self.search_ldap(ldap_user.connection, '(distinguishedName={})' \
-                .format(group_dn), attributes=['primaryGroupToken'])
+        group_attribs = self.search_ldap(
+            ldap_user.connection, '(distinguishedName={})'.format(group_dn),
+            attributes=['primaryGroupToken']
+        )
         if group_attribs:
             pgt = group_attribs.get('primaryGroupToken', None)
             if type(pgt) == list:
@@ -168,7 +172,8 @@ class LDAPBackend(object):
         # Now perform our group membership test. If the primary group token is not-None,
         # then we wrap the filter in an OR and test for that too.
         search_filter = '(&(objectClass=user)({}={})(memberof={}))'.format(
-                settings.UID_ATTRIB, str(ldap_user), group_dn)
+            settings.UID_ATTRIB, str(ldap_user), group_dn
+        )
         if pgt:
             search_filter = '(|{}(&(cn={})(primaryGroupID={})))'.format(search_filter, ldap_user.cn, pgt)
 
@@ -213,50 +218,38 @@ class LDAPBackend(object):
         """
 
         # Construct the user to bind as
-        if settings.BIND_TEMPLATE:
-            # Full CN
-            ldap_bind_user = settings.BIND_TEMPLATE.format(username=username,
-                    base_dn=settings.BASE_DN)
-        elif settings.USERNAME_PREFIX:
-            # Prepend a prefix: useful for DOMAIN\user
-            ldap_bind_user = settings.USERNAME_PREFIX + username
-        elif settings.USERNAME_SUFFIX:
-            # Append a suffix: useful for user@domain
-            ldap_bind_user = username + settings.USERNAME_SUFFIX
-        logger.debug('Attempting to authenticate to LDAP by binding as ' + ldap_bind_user)
+        if settings.BIND_AS_AUTHENTICATING_USER:
+            if settings.BIND_TEMPLATE:
+                # Full CN
+                ldap_bind_user = settings.BIND_TEMPLATE.format(
+                    username=username, base_dn=settings.BASE_DN
+                )
+            elif settings.USERNAME_PREFIX:
+                # Prepend a prefix: useful for DOMAIN\user
+                ldap_bind_user = settings.USERNAME_PREFIX + username
+            elif settings.USERNAME_SUFFIX:
+                # Append a suffix: useful for user@domain
+                ldap_bind_user = username + settings.USERNAME_SUFFIX
+        elif settings.BIND_DN and settings.BIND_PASSWORD:
+            ldap_bind_user = self.find_user_dn(
+                settings.BIND_DN, settings.BIND_PASSWORD, username=username
+            )
 
-        try:
-            c = ldap3.Connection(self.backend,
-                    read_only=True,
-                    lazy=False,
-                    auto_bind=True,
-                    client_strategy=ldap3.SYNC,
-                    authentication=ldap3.SIMPLE,
-                    user=ldap_bind_user,
-                    password=password)
-        except ldap3.core.exceptions.LDAPSocketOpenError as e:
-            logger.error('LDAP connection error: ' + str(e))
-            return None
-        except ldap3.core.exceptions.LDAPBindError as e:
-            if 'invalidCredentials' in str(e):
-                # Invalid bind DN or password
-                return None
-            else:
-                logger.error('LDAP bind error: ' + str(e))
-                return None
-        except Exception as e:
-            logger.exception('Caught exception when trying to connect and bind to LDAP')
-            raise
+        logger.debug(
+            'Attempting to authenticate to LDAP by binding as ' + ldap_bind_user
+        )
+
+        conn = self._maybe_bind(ldap_bind_user, password)
 
         # Search for the user using their full DN
         search_filter = '({}={})'.format(settings.UID_ATTRIB, username)
-        attributes = self.search_ldap(c, search_filter, attributes=LDAPUser._attrib_keys, size_limit=1)
+        attributes = self.search_ldap(conn, search_filter, attributes=LDAPUser._attrib_keys, size_limit=1)
         if not attributes:
             logger.error('LDAP search error: no results for ' + search_filter)
             return None
 
         # Construct an LDAPUser instance for this user
-        return LDAPUser(c, attributes)
+        return LDAPUser(conn, attributes)
 
     def update_group_membership(self, ldap_user, django_user):
         """Update the user's group memberships
@@ -287,3 +280,52 @@ class LDAPBackend(object):
                     getattr(django_user.groups, operation)(g)
 
         django_user.save()
+
+    def find_user_dn(self, bind_user, bind_password, username=None):
+        conn = self._maybe_bind(bind_user, bind_password)
+        search_filter = settings.USER_DN_FILTER_TEMPLATE.format(
+            username=username
+        )
+        conn.search(settings.BASE_DN, search_filter)
+        num_results = len(conn.entries)
+        if num_results == 0:
+            logger.error('User with username {}. not found. Filter used was "{}"'.format(
+                username, search_filter
+            ))
+            return None
+        elif num_results > 1:
+            logger.error('Error searching for username {}. {} matches found. Filter used was "{}"'.format(
+                username, len(num_results), search_filter
+            ))
+            return None
+        else:
+            match = conn.entries[0]
+            return match.entry_get_dn()
+
+    def _maybe_bind(self, user, password):
+        try:
+            conn = ldap3.Connection(
+                self.backend,
+                read_only=True,
+                lazy=False,
+                auto_bind=True,
+                client_strategy=ldap3.SYNC,
+                authentication=ldap3.SIMPLE,
+                user=user,
+                password=password
+            )
+        except ldap3.core.exceptions.LDAPSocketOpenError as e:
+            logger.error('LDAP connection error: ' + str(e))
+            return None
+        except ldap3.core.exceptions.LDAPBindError as e:
+            if 'invalidCredentials' in str(e):
+                # Invalid bind DN or password
+                return None
+            else:
+                logger.error('LDAP bind error: ' + str(e))
+                return None
+        except Exception as e:
+            logger.exception('Caught exception when trying to connect and bind to LDAP')
+            raise
+
+        return conn
