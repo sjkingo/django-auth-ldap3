@@ -240,6 +240,8 @@ class LDAPBackend(object):
         )
 
         conn = self._maybe_bind(ldap_bind_user, password)
+        if conn is None:
+            return None
 
         # Search for the user using their full DN
         search_filter = '({}={})'.format(settings.UID_ATTRIB, username)
@@ -283,6 +285,9 @@ class LDAPBackend(object):
 
     def find_user_dn(self, bind_user, bind_password, username=None):
         conn = self._maybe_bind(bind_user, bind_password)
+        if conn is None:
+            return None
+
         search_filter = settings.USER_DN_FILTER_TEMPLATE.format(
             username=username
         )
