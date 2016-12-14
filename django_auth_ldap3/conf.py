@@ -1,5 +1,6 @@
 from django.conf import settings as django_settings
 
+
 class LDAPSettings(object):
     """
     Class that provides access to the LDAP settings specified in Django's
@@ -13,7 +14,11 @@ class LDAPSettings(object):
     defaults = {
         'ADMIN_GROUP': None,
         'BASE_DN': 'dc=example,dc=com',
+        'BIND_AS_AUTHENTICATING_USER': True,
+        'BIND_DN': '',
+        'BIND_PASSWORD': '',
         'BIND_TEMPLATE': 'uid={username},{base_dn}',
+        'USER_DN_FILTER_TEMPLATE': '(&(objectclass=person)(uid={username}))',
         'GROUP_MAP': None,
         'LOGIN_GROUP': '*',
         'UID_ATTRIB': 'uid',

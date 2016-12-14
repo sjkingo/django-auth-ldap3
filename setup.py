@@ -12,7 +12,7 @@ setup(
     url='https://github.com/sjkingo/django_auth_ldap3',
     install_requires=[
         'Django >= 1.6.10',
-        'ldap3 >= 0.9.7.1',
+        'ldap3 == 2.1.1',
     ],
     packages=find_packages(),
     classifiers=[
