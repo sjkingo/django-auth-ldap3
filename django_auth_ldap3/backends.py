@@ -305,7 +305,7 @@ class LDAPBackend(object):
             return None
         else:
             match = conn.entries[0]
-            return match.entry_get_dn()
+            return match.entry_dn
 
     def _maybe_bind(self, user, password):
         try:
