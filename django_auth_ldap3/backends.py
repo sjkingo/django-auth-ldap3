@@ -79,6 +79,9 @@ class LDAPBackend(object):
         time the user has authenticated.
         """
 
+        #Force username to lower for Active Directory
+        username = username.lower()
+
         # Authenticate against the LDAP backend and return an LDAPUser.
         ldap_user = self.retrieve_ldap_user(username, password)
         if ldap_user is None:
